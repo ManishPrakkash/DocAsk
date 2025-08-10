@@ -212,10 +212,7 @@ class UploadResponse(BaseModel):
 class ErrorResponse(BaseModel):
     detail: str
     code: Optional[str]
-    timestamp: datetimefrom pydantic import BaseModel, EmailStr, Field, validator
-from typing import Optional, List, Dict, Any
-from datetime import datetime
-from enum import Enum
+    timestamp: datetime
 
 class DocumentStatus(str, Enum):
     PENDING = "pending"

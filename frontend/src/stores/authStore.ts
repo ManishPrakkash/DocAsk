@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { AuthState, User } from '@/types';
-import { authAPI, handleAPIError } from '@/lib/api';
+import { AuthState, User } from '../types';
+import { authAPI, handleAPIError } from '../lib/api';
 import toast from 'react-hot-toast';
 
 export const useAuthStore = create<AuthState>()(
@@ -46,6 +46,25 @@ export const useAuthStore = create<AuthState>()(
         
         try {
           await authAPI.register({ email, password });
+          
+          // Auto-login after successful registration
+          const tokenResponse = await authAPI.login({ email, password });
+          const { access_token } = tokenResponse;
+          
+          // Store token in localStorage and state
+          localStorage.setItem('auth_token', access_token);
+          
+          // Get user profile
+          const user = await authAPI.getProfile();
+          
+          set({
+            user,
+            token: access_token,
+            isAuthenticated: true,
+            isLoading: false,
+          });
+          
+          toast.success('Registration successful!');
           
           // Auto-login after successful registration
           await get().login(email, password);

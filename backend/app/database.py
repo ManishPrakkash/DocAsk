@@ -8,19 +8,13 @@ logger = logging.getLogger(__name__)
 
 DATABASE_URL = config(
     'DATABASE_URL',
-    default='postgresql://clausewise_user:clausewise_secure_password@localhost:5432/clausewise'
+    default='sqlite:///./clausewise.db'
 )
 
-# Create engine with security configurations
+# Create engine with SQLite configuration
 engine = create_engine(
     DATABASE_URL,
-    pool_pre_ping=True,
-    pool_recycle=300,
-    echo=False,  # Set to True for SQL debugging
-    connect_args={
-        "sslmode": "prefer",
-        "application_name": "clausewise_api"
-    }
+    connect_args={"check_same_thread": False}  # Needed for SQLite
 )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

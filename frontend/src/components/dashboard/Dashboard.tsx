@@ -5,7 +5,7 @@ import { useDocumentStore } from '@/stores/documentStore';
 import { Clause, RiskLevel } from '@/types';
 import LoadingSpinner from '../ui/LoadingSpinner';
 import RiskBadge from '../ui/RiskBadge';
-import ClauseHighlight from './ClauseHighlight';
+import ClauseHighlight from '../analysis/ClauseHighlight';
 
 const AnalysisView: React.FC = () => {
   const { documentId } = useParams<{ documentId: string }>();

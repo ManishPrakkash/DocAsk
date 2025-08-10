@@ -3,9 +3,9 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.auth import get_current_user
-from app.models import User, LegalPlaybook
+from app.models import User, LegalPlaybook as LegalPlaybookModel
 from app.schemas import (
-    LegalPlaybookCreate, LegalPlaybookResponse, LegalPlaybookUpdate, 
+    LegalPlaybookCreate, LegalPlaybookResponse, LegalPlaybookUpdate, LegalPlaybook,
     AnalysisRequest, AnalysisResult
 )
 from app.tasks import analyze_document_with_playbook
@@ -29,10 +29,10 @@ async def get_user_playbooks(
     - **limit**: Maximum number of playbooks to return
     """
     try:
-        playbooks = db.query(LegalPlaybook)\
-            .filter(LegalPlaybook.user_id == current_user.id)\
-            .filter(LegalPlaybook.is_active == "true")\
-            .order_by(LegalPlaybook.created_at.desc())\
+        playbooks = db.query(LegalPlaybookModel)\
+            .filter(LegalPlaybookModel.user_id == current_user.id)\
+            .filter(LegalPlaybookModel.is_active == "true")\
+            .order_by(LegalPlaybookModel.created_at.desc())\
             .offset(skip)\
             .limit(limit)\
             .all()
@@ -70,7 +70,7 @@ async def create_playbook(
     - **rules**: JSON object containing playbook rules and criteria
     """
     try:
-        playbook = LegalPlaybook(
+        playbook = LegalPlaybookModel(
             user_id=current_user.id,
             name=playbook_data.name,
             description=playbook_data.description,
@@ -101,7 +101,7 @@ async def create_playbook(
             detail="Failed to create playbook"
         )
 
-@router.get("/playbooks/{playbook_id}", response_model=LegalPlaybook)
+@router.get("/playbooks/{playbook_id}", response_model=LegalPlaybookResponse)
 async def get_playbook(
     playbook_id: int,
     current_user: User = Depends(get_current_user),
@@ -164,8 +164,8 @@ async def analyze_with_playbook(
         
         # Verify playbook exists if provided
         if analysis_request.playbook_id:
-            playbook = db.query(LegalPlaybook)\
-                .filter(LegalPlaybook.id == analysis_request.playbook_id, LegalPlaybook.user_id == current_user.id)\
+            playbook = db.query(LegalPlaybookModel)\
+                .filter(LegalPlaybookModel.id == analysis_request.playbook_id, LegalPlaybookModel.user_id == current_user.id)\
                 .first()
             
             if not playbook:
@@ -344,10 +344,10 @@ async def get_analysis_statistics(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to retrieve statistics"
         )
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Playbook not found"
-            )
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Playbook not found"
+        )
         
         return playbook
         
@@ -428,3 +428,17 @@ async def delete_playbook(
             .first()
         
         if not playbook:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Playbook not found"
+            )
+            
+        db.delete(playbook)
+        db.commit()
+        return {"message": "Playbook deleted successfully"}
+    except Exception as e:
+        logger.error(f"Error deleting playbook {playbook_id}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to delete playbook"
+        )
