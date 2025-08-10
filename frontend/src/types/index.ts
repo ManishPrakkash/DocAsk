@@ -49,7 +49,7 @@ export interface Document {
   error_message?: string;
 }
 
-export interface DocumentStatus {
+export interface DocumentStatusUpdate {
   id: number;
   status: DocumentStatus;
   progress?: number;
@@ -197,7 +197,7 @@ export interface DocumentState {
   fetchDocuments: () => Promise<void>;
   uploadDocument: (file: File) => Promise<number>;
   fetchDocumentAnalysis: (id: number) => Promise<void>;
-  pollDocumentStatus: (id: number) => Promise<DocumentStatus>;
+  pollDocumentStatus: (id: number) => Promise<DocumentStatusUpdate>;
   deleteDocument: (id: number) => Promise<void>;
 }
 

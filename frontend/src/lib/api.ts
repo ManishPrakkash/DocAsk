@@ -1,7 +1,7 @@
 import axios, { AxiosResponse } from 'axios';
 import { 
   User, UserCreate, UserLogin, AuthToken, Document, DocumentAnalysis, 
-  UploadResponse, DocumentStatus, LegalPlaybook, LegalPlaybookCreate, 
+  UploadResponse, DocumentStatusUpdate, LegalPlaybook, LegalPlaybookCreate, 
   LegalPlaybookResponse, AnalysisRequest, JobStatus, AnalysisStatistics,
   APIError
 } from '@/types';
@@ -96,8 +96,8 @@ export const documentAPI = {
     return response.data;
   },
 
-  getDocumentStatus: async (id: number): Promise<DocumentStatus> => {
-    const response: AxiosResponse<DocumentStatus> = await api.get(`/api/documents/${id}/status`);
+  getDocumentStatus: async (id: number): Promise<DocumentStatusUpdate> => {
+    const response: AxiosResponse<DocumentStatusUpdate> = await api.get(`/api/documents/${id}/status`);
     return response.data;
   },
 

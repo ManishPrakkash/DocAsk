@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -8,45 +10,49 @@
   }
   
   body {
-    @apply antialiased;
+    @apply antialiased text-gray-800 bg-gray-50;
   }
 }
 
 @layer components {
   .btn-primary {
-    @apply px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 transition-colors duration-200;
+    @apply px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 transition-colors duration-200 font-medium;
   }
   
   .btn-secondary {
-    @apply px-4 py-2 bg-gray-200 text-gray-900 rounded-md hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 transition-colors duration-200;
+    @apply px-4 py-2 bg-gray-200 text-gray-900 rounded-md hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 transition-colors duration-200 font-medium;
   }
   
   .btn-danger {
-    @apply px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 transition-colors duration-200;
+    @apply px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 transition-colors duration-200 font-medium;
   }
   
   .input-field {
-    @apply w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500;
+    @apply w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 transition-colors duration-200;
   }
   
   .card {
-    @apply bg-white rounded-lg shadow-sm border border-gray-200 p-6;
+    @apply bg-white rounded-lg shadow-sm border border-gray-200 p-6 transition-shadow duration-200 hover:shadow-md;
+  }
+  
+  .risk-badge {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
   }
   
   .risk-badge-low {
-    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800;
+    @apply risk-badge bg-green-100 text-green-800;
   }
   
   .risk-badge-medium {
-    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800;
+    @apply risk-badge bg-yellow-100 text-yellow-800;
   }
   
   .risk-badge-high {
-    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800;
+    @apply risk-badge bg-red-100 text-red-800;
   }
   
   .risk-badge-critical {
-    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-200 text-red-900;
+    @apply risk-badge bg-red-200 text-red-900;
   }
   
   .clause-highlight {
@@ -54,19 +60,19 @@
   }
   
   .clause-highlight-low {
-    @apply bg-green-100 hover:bg-green-200 border-l-4 border-green-400;
+    @apply clause-highlight bg-green-100 hover:bg-green-200 border-l-4 border-green-400;
   }
   
   .clause-highlight-medium {
-    @apply bg-yellow-100 hover:bg-yellow-200 border-l-4 border-yellow-400;
+    @apply clause-highlight bg-yellow-100 hover:bg-yellow-200 border-l-4 border-yellow-400;
   }
   
   .clause-highlight-high {
-    @apply bg-red-100 hover:bg-red-200 border-l-4 border-red-400;
+    @apply clause-highlight bg-red-100 hover:bg-red-200 border-l-4 border-red-400;
   }
   
   .clause-highlight-critical {
-    @apply bg-red-200 hover:bg-red-300 border-l-4 border-red-600;
+    @apply clause-highlight bg-red-200 hover:bg-red-300 border-l-4 border-red-600;
   }
   
   .clause-highlight-selected {
