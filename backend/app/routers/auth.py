@@ -1,8 +1,6 @@
 from datetime import timedelta
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import HTTPBearer
-from sqlalchemy.orm import Session
-from app.database import get_db
 from app.auth import authenticate_user, create_access_token, create_user, ACCESS_TOKEN_EXPIRE_MINUTES
 from app.schemas import UserCreate, UserLogin, Token, UserResponse
 import logging
@@ -13,10 +11,7 @@ router = APIRouter()
 security = HTTPBearer()
 
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
-async def register_user(
-    user_data: UserCreate,
-    db: Session = Depends(get_db)
-):
+async def register_user(user_data: UserCreate):
     """
     Register a new user account
     
@@ -25,12 +20,18 @@ async def register_user(
     """
     try:
         # Create user account
-        user = create_user(db, user_data.email, user_data.password)
+        user = await create_user(user_data)
+        
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="User with this email already exists"
+            )
         
         logger.info(f"New user registered: {user.email}")
         
         return UserResponse(
-            id=user.id,
+            id=str(user.id),
             email=user.email,
             created_at=user.created_at
         )
@@ -45,10 +46,7 @@ async def register_user(
         )
 
 @router.post("/login", response_model=Token)
-async def login_user(
-    login_data: UserLogin,
-    db: Session = Depends(get_db)
-):
+async def login_user(login_data: UserLogin):
     """
     Authenticate user and return JWT access token
     
@@ -59,7 +57,7 @@ async def login_user(
     """
     try:
         # Authenticate user
-        user = authenticate_user(db, login_data.email, login_data.password)
+        user = await authenticate_user(login_data.email, login_data.password)
         if not user:
             logger.warning(f"Failed login attempt for {login_data.email}")
             raise HTTPException(

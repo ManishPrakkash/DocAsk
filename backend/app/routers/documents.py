@@ -3,10 +3,9 @@ import uuid
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
 from fastapi.responses import FileResponse
-from sqlalchemy.orm import Session
-from app.database import get_db
+from app.database import get_documents_collection, get_clauses_collection
 from app.auth import get_current_user
-from app.models import User, Document, DocumentStatus
+from app.models import User, Document, DocumentStatus, DocumentCreate
 from app.schemas import (
     DocumentResponse, DocumentStatusResponse, UploadResponse, 
     DocumentAnalysisResponse, ClauseResponse, AnalysisResult
@@ -15,6 +14,7 @@ from app.tasks import process_document
 from app.services.document_parser import DocumentParser
 import aiofiles
 import logging
+from bson import ObjectId
 
 logger = logging.getLogger(__name__)
 
@@ -36,8 +36,7 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 @router.post("/upload", response_model=UploadResponse, status_code=status.HTTP_202_ACCEPTED)
 async def upload_document(
     file: UploadFile = File(...),
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    current_user: User = Depends(get_current_user)
 ):
     """
     Upload legal document for analysis
@@ -89,30 +88,34 @@ async def upload_document(
         parser = DocumentParser()
         metadata = parser.get_document_metadata(file_path, file.content_type)
         
-        # Create document record in database
-        document = Document(
-            user_id=current_user.id,
-            filename=unique_filename,
-            original_filename=file.filename,
-            file_path=file_path,
-            file_size=len(content),
-            mime_type=file.content_type,
-            status=DocumentStatus.PENDING,
-            document_metadata=metadata
-        )
+        # Create document record in MongoDB
+        documents_collection = get_documents_collection()
         
-        db.add(document)
-        db.commit()
-        db.refresh(document)
+        document_doc = {
+            "user_id": current_user.id,
+            "filename": unique_filename,
+            "original_filename": file.filename,
+            "file_path": file_path,
+            "file_size": len(content),
+            "mime_type": file.content_type,
+            "status": DocumentStatus.PENDING,
+            "document_metadata": metadata,
+            "total_clauses_found": 0,
+            "created_at": metadata.get("created_at"),
+            "updated_at": metadata.get("created_at")
+        }
         
-        # Queue asynchronous processing job
-        job = process_document.delay(document.id)
+        result = await documents_collection.insert_one(document_doc)
+        document_id = str(result.inserted_id)
         
-        logger.info(f"Document uploaded successfully: {document.id} by user {current_user.id}")
+        # Trigger async processing
+        job = process_document.delay(document_id)
+        
+        logger.info(f"Document uploaded: {document_id} for user {current_user.email}")
         
         return UploadResponse(
-            message="Document uploaded successfully and queued for processing",
-            document_id=document.id,
+            message="Document uploaded successfully and processing started",
+            document_id=document_id,
             status=DocumentStatus.PENDING,
             job_id=job.id
         )
@@ -120,90 +123,97 @@ async def upload_document(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Upload error for user {current_user.id}: {str(e)}")
-        # Clean up file if it was created
-        if 'file_path' in locals() and os.path.exists(file_path):
-            try:
-                os.remove(file_path)
-            except:
-                pass
-        
+        logger.error(f"Upload error: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="File upload failed"
+            detail="Upload failed due to server error"
         )
 
 @router.get("/", response_model=List[DocumentResponse])
 async def get_user_documents(
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
     skip: int = 0,
     limit: int = 100
 ):
     """
-    Get list of user's documents
+    Get all documents for the current user
     
-    - **skip**: Number of documents to skip (pagination)
+    - **skip**: Number of documents to skip (for pagination)
     - **limit**: Maximum number of documents to return
     """
     try:
-        documents = db.query(Document)\
-            .filter(Document.user_id == current_user.id)\
-            .order_by(Document.created_at.desc())\
-            .offset(skip)\
-            .limit(limit)\
-            .all()
+        documents_collection = get_documents_collection()
         
-        return [
-            DocumentResponse(
-                id=doc.id,
-                filename=doc.filename,
-                original_filename=doc.original_filename,
-                status=doc.status,
-                file_size=doc.file_size,
-                created_at=doc.created_at,
-                total_clauses_found=doc.total_clauses_found,
-                processing_completed_at=doc.processing_completed_at,
-                error_message=doc.error_message
-            )
-            for doc in documents
-        ]
+        # Query documents for current user
+        cursor = documents_collection.find(
+            {"user_id": current_user.id}
+        ).skip(skip).limit(limit).sort("created_at", -1)
+        
+        documents = []
+        async for doc in cursor:
+            documents.append(DocumentResponse(
+                id=str(doc["_id"]),
+                filename=doc["filename"],
+                original_filename=doc["original_filename"],
+                status=doc["status"],
+                file_size=doc["file_size"],
+                created_at=doc["created_at"],
+                total_clauses_found=doc["total_clauses_found"],
+                processing_completed_at=doc.get("processing_completed_at"),
+                error_message=doc.get("error_message")
+            ))
+        
+        return documents
         
     except Exception as e:
-        logger.error(f"Error fetching documents for user {current_user.id}: {str(e)}")
+        logger.error(f"Error fetching documents: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to retrieve documents"
+            detail="Failed to fetch documents"
         )
 
 @router.get("/{document_id}", response_model=DocumentResponse)
 async def get_document(
-    document_id: int,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    document_id: str,
+    current_user: User = Depends(get_current_user)
 ):
-    """Get specific document details"""
+    """
+    Get a specific document by ID
+    
+    - **document_id**: Document ID
+    """
     try:
-        document = db.query(Document)\
-            .filter(Document.id == document_id, Document.user_id == current_user.id)\
-            .first()
+        # Validate ObjectId
+        if not ObjectId.is_valid(document_id):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid document ID format"
+            )
         
-        if not document:
+        documents_collection = get_documents_collection()
+        
+        # Find document
+        doc = await documents_collection.find_one({
+            "_id": ObjectId(document_id),
+            "user_id": current_user.id
+        })
+        
+        if not doc:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Document not found"
             )
         
         return DocumentResponse(
-            id=document.id,
-            filename=document.filename,
-            original_filename=document.original_filename,
-            status=document.status,
-            file_size=document.file_size,
-            created_at=document.created_at,
-            total_clauses_found=document.total_clauses_found,
-            processing_completed_at=document.processing_completed_at,
-            error_message=document.error_message
+            id=str(doc["_id"]),
+            filename=doc["filename"],
+            original_filename=doc["original_filename"],
+            status=doc["status"],
+            file_size=doc["file_size"],
+            created_at=doc["created_at"],
+            total_clauses_found=doc["total_clauses_found"],
+            processing_completed_at=doc.get("processing_completed_at"),
+            error_message=doc.get("error_message")
         )
         
     except HTTPException:
@@ -212,149 +222,167 @@ async def get_document(
         logger.error(f"Error fetching document {document_id}: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to retrieve document"
+            detail="Failed to fetch document"
         )
 
 @router.get("/{document_id}/status", response_model=DocumentStatusResponse)
 async def get_document_status(
-    document_id: int,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    document_id: str,
+    current_user: User = Depends(get_current_user)
 ):
     """
-    Get real-time document processing status
+    Get document processing status
     
-    Used for polling document processing progress
+    - **document_id**: Document ID
     """
     try:
-        document = db.query(Document)\
-            .filter(Document.id == document_id, Document.user_id == current_user.id)\
-            .first()
+        # Validate ObjectId
+        if not ObjectId.is_valid(document_id):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid document ID format"
+            )
         
-        if not document:
+        documents_collection = get_documents_collection()
+        
+        # Find document
+        doc = await documents_collection.find_one({
+            "_id": ObjectId(document_id),
+            "user_id": current_user.id
+        })
+        
+        if not doc:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Document not found"
             )
         
-        # Calculate progress percentage
+        # Calculate progress based on status
         progress = 0
-        if document.status == DocumentStatus.PENDING:
+        if doc["status"] == DocumentStatus.PENDING:
             progress = 0
-        elif document.status == DocumentStatus.PROCESSING:
-            progress = 50  # Could be more sophisticated with actual job progress
-        elif document.status == DocumentStatus.COMPLETE:
+        elif doc["status"] == DocumentStatus.PROCESSING:
+            progress = 50
+        elif doc["status"] == DocumentStatus.COMPLETE:
             progress = 100
-        elif document.status == DocumentStatus.ERROR:
+        elif doc["status"] == DocumentStatus.ERROR:
             progress = 0
         
         return DocumentStatusResponse(
-            id=document.id,
-            status=document.status,
+            id=str(doc["_id"]),
+            status=doc["status"],
             progress=progress,
-            error_message=document.error_message,
-            total_clauses_found=document.total_clauses_found
+            error_message=doc.get("error_message"),
+            total_clauses_found=doc["total_clauses_found"]
         )
         
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error fetching status for document {document_id}: {str(e)}")
+        logger.error(f"Error fetching document status {document_id}: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to retrieve document status"
+            detail="Failed to fetch document status"
         )
 
 @router.get("/{document_id}/analysis", response_model=DocumentAnalysisResponse)
 async def get_document_analysis(
-    document_id: int,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    document_id: str,
+    current_user: User = Depends(get_current_user)
 ):
     """
-    Get complete document analysis results
+    Get complete document analysis including clauses
     
-    Returns document details, extracted clauses, and analysis summary
+    - **document_id**: Document ID
     """
     try:
-        document = db.query(Document)\
-            .filter(Document.id == document_id, Document.user_id == current_user.id)\
-            .first()
+        # Validate ObjectId
+        if not ObjectId.is_valid(document_id):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid document ID format"
+            )
         
-        if not document:
+        documents_collection = get_documents_collection()
+        clauses_collection = get_clauses_collection()
+        
+        # Find document
+        doc = await documents_collection.find_one({
+            "_id": ObjectId(document_id),
+            "user_id": current_user.id
+        })
+        
+        if not doc:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Document not found"
             )
         
-        if document.status != DocumentStatus.COMPLETE:
+        # Check if analysis is complete
+        if doc["status"] != DocumentStatus.COMPLETE:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Document analysis not yet complete"
+                detail="Document analysis not complete"
             )
         
-        # Get document clauses
-        clauses = [
-            ClauseResponse(
-                id=clause.id,
-                text=clause.text,
-                category=clause.category,
-                subcategory=clause.subcategory,
-                risk_score=clause.risk_score,
-                risk_level=clause.risk_level,
-                confidence_score=clause.confidence_score,
-                start_position=clause.start_position,
-                end_position=clause.end_position,
-                page_number=clause.page_number,
-                recommendations=clause.recommendations
-            )
-            for clause in document.clauses
-        ]
+        # Get clauses for this document
+        clauses_cursor = clauses_collection.find({"document_id": ObjectId(document_id)})
+        clauses = []
+        async for clause in clauses_cursor:
+            clauses.append(ClauseResponse(
+                id=str(clause["_id"]),
+                text=clause["text"],
+                category=clause["category"],
+                subcategory=clause.get("subcategory"),
+                risk_score=clause["risk_score"],
+                risk_level=clause["risk_level"],
+                confidence_score=clause["confidence_score"],
+                start_position=clause.get("start_position"),
+                end_position=clause.get("end_position"),
+                page_number=clause.get("page_number"),
+                recommendations=clause.get("recommendations")
+            ))
         
-        # Generate analysis summary
+        # Create document response
+        document_response = DocumentResponse(
+            id=str(doc["_id"]),
+            filename=doc["filename"],
+            original_filename=doc["original_filename"],
+            status=doc["status"],
+            file_size=doc["file_size"],
+            created_at=doc["created_at"],
+            total_clauses_found=doc["total_clauses_found"],
+            processing_completed_at=doc.get("processing_completed_at"),
+            error_message=doc.get("error_message")
+        )
+        
+        # Calculate analysis summary
         risk_distribution = {}
         category_breakdown = {}
         total_risk_score = 0.0
-        recommendations = []
         
-        for clause in document.clauses:
+        for clause in clauses:
             # Risk distribution
-            risk_level = clause.risk_level.value
+            risk_level = clause.risk_level
             risk_distribution[risk_level] = risk_distribution.get(risk_level, 0) + 1
             
             # Category breakdown
             category = clause.category
             category_breakdown[category] = category_breakdown.get(category, 0) + 1
             
-            # Risk score
+            # Total risk score
             total_risk_score += clause.risk_score
-            
-            # High-risk recommendations
-            if clause.risk_level.value in ['critical', 'high'] and clause.recommendations:
-                recommendations.append(clause.recommendations)
         
-        overall_risk_score = total_risk_score / len(document.clauses) if document.clauses else 0.0
+        average_risk_score = total_risk_score / len(clauses) if clauses else 0.0
         
         analysis_summary = AnalysisResult(
-            document_id=document.id,
-            total_clauses=len(document.clauses),
+            document_id=document_id,
+            total_clauses=len(clauses),
             risk_distribution=risk_distribution,
             category_breakdown=category_breakdown,
-            recommendations=recommendations[:10],  # Limit recommendations
-            overall_risk_score=overall_risk_score,
-            analysis_metadata=document.document_metadata or {}
-        )
-        
-        document_response = DocumentResponse(
-            id=document.id,
-            filename=document.filename,
-            original_filename=document.original_filename,
-            status=document.status,
-            file_size=document.file_size,
-            created_at=document.created_at,
-            total_clauses_found=document.total_clauses_found,
-            processing_completed_at=document.processing_completed_at,
-            error_message=document.error_message
+            recommendations=[c.recommendations for c in clauses if c.recommendations],
+            overall_risk_score=average_risk_score,
+            analysis_metadata=doc.get("document_metadata", {})
         )
         
         return DocumentAnalysisResponse(
@@ -366,42 +394,59 @@ async def get_document_analysis(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error fetching analysis for document {document_id}: {str(e)}")
+        logger.error(f"Error fetching document analysis {document_id}: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to retrieve document analysis"
+            detail="Failed to fetch document analysis"
         )
 
 @router.delete("/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_document(
-    document_id: int,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    document_id: str,
+    current_user: User = Depends(get_current_user)
 ):
-    """Delete document and all associated data"""
+    """
+    Delete a document and its associated clauses
+    
+    - **document_id**: Document ID
+    """
     try:
-        document = db.query(Document)\
-            .filter(Document.id == document_id, Document.user_id == current_user.id)\
-            .first()
+        # Validate ObjectId
+        if not ObjectId.is_valid(document_id):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid document ID format"
+            )
         
-        if not document:
+        documents_collection = get_documents_collection()
+        clauses_collection = get_clauses_collection()
+        
+        # Find document
+        doc = await documents_collection.find_one({
+            "_id": ObjectId(document_id),
+            "user_id": current_user.id
+        })
+        
+        if not doc:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Document not found"
             )
         
-        # Delete physical file
-        if os.path.exists(document.file_path):
-            try:
-                os.remove(document.file_path)
-            except Exception as e:
-                logger.warning(f"Failed to delete file {document.file_path}: {str(e)}")
+        # Delete associated clauses
+        await clauses_collection.delete_many({"document_id": ObjectId(document_id)})
         
-        # Delete from database (cascades to clauses)
-        db.delete(document)
-        db.commit()
+        # Delete document
+        await documents_collection.delete_one({"_id": ObjectId(document_id)})
         
-        logger.info(f"Document {document_id} deleted by user {current_user.id}")
+        # Delete file from disk
+        try:
+            if os.path.exists(doc["file_path"]):
+                os.remove(doc["file_path"])
+        except Exception as e:
+            logger.warning(f"Failed to delete file {doc['file_path']}: {e}")
+        
+        logger.info(f"Document deleted: {document_id} for user {current_user.email}")
         
     except HTTPException:
         raise

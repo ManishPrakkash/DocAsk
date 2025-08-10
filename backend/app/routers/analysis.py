@@ -1,7 +1,7 @@
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
-from app.database import get_db
+from bson import ObjectId
+from app.database import get_legal_playbooks_collection, get_documents_collection, get_clauses_collection
 from app.auth import get_current_user
 from app.models import User, LegalPlaybook as LegalPlaybookModel
 from app.schemas import (
@@ -18,7 +18,6 @@ router = APIRouter()
 @router.get("/playbooks", response_model=List[LegalPlaybookResponse])
 async def get_user_playbooks(
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
     skip: int = 0,
     limit: int = 100
 ):
@@ -29,22 +28,27 @@ async def get_user_playbooks(
     - **limit**: Maximum number of playbooks to return
     """
     try:
-        playbooks = db.query(LegalPlaybookModel)\
-            .filter(LegalPlaybookModel.user_id == current_user.id)\
-            .filter(LegalPlaybookModel.is_active == "true")\
-            .order_by(LegalPlaybookModel.created_at.desc())\
-            .offset(skip)\
-            .limit(limit)\
-            .all()
+        collection = get_legal_playbooks_collection()
+        
+        # Convert user ID to ObjectId for MongoDB query
+        user_id = ObjectId(current_user.id)
+        
+        # Query MongoDB for playbooks
+        cursor = collection.find({
+            "user_id": user_id,
+            "is_active": True
+        }).sort("created_at", -1).skip(skip).limit(limit)
+        
+        playbooks = list(cursor)
         
         return [
             LegalPlaybookResponse(
-                id=playbook.id,
-                name=playbook.name,
-                description=playbook.description,
-                version=playbook.version,
-                is_active=playbook.is_active,
-                created_at=playbook.created_at
+                id=str(playbook["_id"]),
+                name=playbook["name"],
+                description=playbook["description"],
+                version=playbook["version"],
+                is_active=playbook["is_active"],
+                created_at=playbook["created_at"]
             )
             for playbook in playbooks
         ]
@@ -59,8 +63,7 @@ async def get_user_playbooks(
 @router.post("/playbooks", response_model=LegalPlaybookResponse, status_code=status.HTTP_201_CREATED)
 async def create_playbook(
     playbook_data: LegalPlaybookCreate,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    current_user: User = Depends(get_current_user)
 ):
     """
     Create a new legal playbook
@@ -70,28 +73,33 @@ async def create_playbook(
     - **rules**: JSON object containing playbook rules and criteria
     """
     try:
-        playbook = LegalPlaybookModel(
-            user_id=current_user.id,
-            name=playbook_data.name,
-            description=playbook_data.description,
-            rules=playbook_data.rules,
-            version="1.0",
-            is_active="true"
-        )
+        collection = get_legal_playbooks_collection()
         
-        db.add(playbook)
-        db.commit()
-        db.refresh(playbook)
+        # Convert user ID to ObjectId for MongoDB
+        user_id = ObjectId(current_user.id)
         
-        logger.info(f"Playbook created: {playbook.id} by user {current_user.id}")
+        playbook_doc = {
+            "user_id": user_id,
+            "name": playbook_data.name,
+            "description": playbook_data.description,
+            "rules": playbook_data.rules,
+            "version": "1.0",
+            "is_active": True,
+            "created_at": playbook_data.created_at
+        }
+        
+        result = collection.insert_one(playbook_doc)
+        playbook_id = result.inserted_id
+        
+        logger.info(f"Playbook created: {playbook_id} by user {current_user.id}")
         
         return LegalPlaybookResponse(
-            id=playbook.id,
-            name=playbook.name,
-            description=playbook.description,
-            version=playbook.version,
-            is_active=playbook.is_active,
-            created_at=playbook.created_at
+            id=str(playbook_id),
+            name=playbook_data.name,
+            description=playbook_data.description,
+            version="1.0",
+            is_active=True,
+            created_at=playbook_data.created_at
         )
         
     except Exception as e:
@@ -103,15 +111,28 @@ async def create_playbook(
 
 @router.get("/playbooks/{playbook_id}", response_model=LegalPlaybookResponse)
 async def get_playbook(
-    playbook_id: int,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    playbook_id: str,
+    current_user: User = Depends(get_current_user)
 ):
     """Get specific playbook details including rules"""
     try:
-        playbook = db.query(LegalPlaybook)\
-            .filter(LegalPlaybook.id == playbook_id, LegalPlaybook.user_id == current_user.id)\
-            .first()
+        collection = get_legal_playbooks_collection()
+        
+        # Validate ObjectId
+        try:
+            playbook_obj_id = ObjectId(playbook_id)
+        except:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid playbook ID format"
+            )
+        
+        user_id = ObjectId(current_user.id)
+        
+        playbook = collection.find_one({
+            "_id": playbook_obj_id,
+            "user_id": user_id
+        })
         
         if not playbook:
             raise HTTPException(
@@ -119,25 +140,28 @@ async def get_playbook(
                 detail="Playbook not found"
             )
         
-        db.delete(playbook)
-        db.commit()
-        
-        logger.info(f"Playbook deleted: {playbook_id} by user {current_user.id}")
+        return LegalPlaybookResponse(
+            id=str(playbook["_id"]),
+            name=playbook["name"],
+            description=playbook["description"],
+            version=playbook["version"],
+            is_active=playbook["is_active"],
+            created_at=playbook["created_at"]
+        )
         
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error deleting playbook {playbook_id}: {str(e)}")
+        logger.error(f"Error fetching playbook {playbook_id}: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to delete playbook"
+            detail="Failed to retrieve playbook"
         )
 
 @router.post("/analyze", response_model=dict, status_code=status.HTTP_202_ACCEPTED)
 async def analyze_with_playbook(
     analysis_request: AnalysisRequest,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    current_user: User = Depends(get_current_user)
 ):
     """
     Analyze document with specific playbook
@@ -148,13 +172,26 @@ async def analyze_with_playbook(
     
     Returns job ID for tracking analysis progress
     """
-    from app.models import Document
-    
     try:
+        documents_collection = get_documents_collection()
+        playbooks_collection = get_legal_playbooks_collection()
+        
+        # Validate document ID
+        try:
+            document_obj_id = ObjectId(analysis_request.document_id)
+        except:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid document ID format"
+            )
+        
+        user_id = ObjectId(current_user.id)
+        
         # Verify document exists and belongs to user
-        document = db.query(Document)\
-            .filter(Document.id == analysis_request.document_id, Document.user_id == current_user.id)\
-            .first()
+        document = documents_collection.find_one({
+            "_id": document_obj_id,
+            "user_id": user_id
+        })
         
         if not document:
             raise HTTPException(
@@ -164,9 +201,18 @@ async def analyze_with_playbook(
         
         # Verify playbook exists if provided
         if analysis_request.playbook_id:
-            playbook = db.query(LegalPlaybookModel)\
-                .filter(LegalPlaybookModel.id == analysis_request.playbook_id, LegalPlaybookModel.user_id == current_user.id)\
-                .first()
+            try:
+                playbook_obj_id = ObjectId(analysis_request.playbook_id)
+            except:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Invalid playbook ID format"
+                )
+            
+            playbook = playbooks_collection.find_one({
+                "_id": playbook_obj_id,
+                "user_id": user_id
+            })
             
             if not playbook:
                 raise HTTPException(
@@ -264,60 +310,65 @@ async def get_analysis_job_status(
 
 @router.get("/statistics", response_model=dict)
 async def get_analysis_statistics(
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    current_user: User = Depends(get_current_user)
 ):
     """
     Get user's document analysis statistics
     
     Returns summary statistics across all user's analyzed documents
     """
-    from app.models import Document, Clause
-    from sqlalchemy import func
-    
     try:
+        documents_collection = get_documents_collection()
+        clauses_collection = get_clauses_collection()
+        
+        user_id = ObjectId(current_user.id)
+        
         # Get document counts by status
-        document_stats = db.query(
-            Document.status,
-            func.count(Document.id)
-        ).filter(Document.user_id == current_user.id)\
-         .group_by(Document.status)\
-         .all()
+        pipeline = [
+            {"$match": {"user_id": user_id}},
+            {"$group": {"_id": "$status", "count": {"$sum": 1}}}
+        ]
+        document_stats = list(documents_collection.aggregate(pipeline))
         
         # Get clause statistics
-        clause_stats = db.query(
-            Clause.risk_level,
-            func.count(Clause.id)
-        ).join(Document)\
-         .filter(Document.user_id == current_user.id)\
-         .group_by(Clause.risk_level)\
-         .all()
+        pipeline = [
+            {"$lookup": {"from": "documents", "localField": "document_id", "foreignField": "_id", "as": "document"}},
+            {"$unwind": "$document"},
+            {"$match": {"document.user_id": user_id}},
+            {"$group": {"_id": "$risk_level", "count": {"$sum": 1}}}
+        ]
+        clause_stats = list(clauses_collection.aggregate(pipeline))
         
         # Get category breakdown
-        category_stats = db.query(
-            Clause.category,
-            func.count(Clause.id)
-        ).join(Document)\
-         .filter(Document.user_id == current_user.id)\
-         .group_by(Clause.category)\
-         .all()
+        pipeline = [
+            {"$lookup": {"from": "documents", "localField": "document_id", "foreignField": "_id", "as": "document"}},
+            {"$unwind": "$document"},
+            {"$match": {"document.user_id": user_id}},
+            {"$group": {"_id": "$category", "count": {"$sum": 1}}}
+        ]
+        category_stats = list(clauses_collection.aggregate(pipeline))
         
         # Calculate average risk score
-        avg_risk = db.query(
-            func.avg(Clause.risk_score)
-        ).join(Document)\
-         .filter(Document.user_id == current_user.id)\
-         .scalar() or 0.0
+        pipeline = [
+            {"$lookup": {"from": "documents", "localField": "document_id", "foreignField": "_id", "as": "document"}},
+            {"$unwind": "$document"},
+            {"$match": {"document.user_id": user_id}},
+            {"$group": {"_id": None, "avg_risk": {"$avg": "$risk_score"}}}
+        ]
+        avg_risk_result = list(clauses_collection.aggregate(pipeline))
+        avg_risk = avg_risk_result[0]["avg_risk"] if avg_risk_result else 0.0
         
         # Total documents and clauses
-        total_documents = db.query(func.count(Document.id))\
-            .filter(Document.user_id == current_user.id)\
-            .scalar()
+        total_documents = documents_collection.count_documents({"user_id": user_id})
         
-        total_clauses = db.query(func.count(Clause.id))\
-            .join(Document)\
-            .filter(Document.user_id == current_user.id)\
-            .scalar()
+        pipeline = [
+            {"$lookup": {"from": "documents", "localField": "document_id", "foreignField": "_id", "as": "document"}},
+            {"$unwind": "$document"},
+            {"$match": {"document.user_id": user_id}},
+            {"$count": "total"}
+        ]
+        total_clauses_result = list(clauses_collection.aggregate(pipeline))
+        total_clauses = total_clauses_result[0]["total"] if total_clauses_result else 0
         
         statistics = {
             "summary": {
@@ -326,13 +377,13 @@ async def get_analysis_statistics(
                 "average_risk_score": round(float(avg_risk), 3)
             },
             "document_status": {
-                status.value: count for status, count in document_stats
+                stat["_id"]: stat["count"] for stat in document_stats
             },
             "risk_distribution": {
-                risk_level.value: count for risk_level, count in clause_stats
+                stat["_id"]: stat["count"] for stat in clause_stats
             },
             "category_breakdown": {
-                category: count for category, count in category_stats
+                stat["_id"]: stat["count"] for stat in category_stats
             }
         }
         
@@ -344,34 +395,33 @@ async def get_analysis_statistics(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to retrieve statistics"
         )
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Playbook not found"
-        )
-        
-        return playbook
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error fetching playbook {playbook_id}: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to retrieve playbook"
-        )
 
 @router.put("/playbooks/{playbook_id}", response_model=LegalPlaybookResponse)
 async def update_playbook(
-    playbook_id: int,
+    playbook_id: str,
     update_data: LegalPlaybookUpdate,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    current_user: User = Depends(get_current_user)
 ):
     """Update existing playbook"""
     try:
-        playbook = db.query(LegalPlaybook)\
-            .filter(LegalPlaybook.id == playbook_id, LegalPlaybook.user_id == current_user.id)\
-            .first()
+        collection = get_legal_playbooks_collection()
+        
+        # Validate ObjectId
+        try:
+            playbook_obj_id = ObjectId(playbook_id)
+        except:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid playbook ID format"
+            )
+        
+        user_id = ObjectId(current_user.id)
+        
+        # Find playbook
+        playbook = collection.find_one({
+            "_id": playbook_obj_id,
+            "user_id": user_id
+        })
         
         if not playbook:
             raise HTTPException(
@@ -379,31 +429,44 @@ async def update_playbook(
                 detail="Playbook not found"
             )
         
-        # Update fields if provided
+        # Prepare update data
+        update_fields = {}
         if update_data.name is not None:
-            playbook.name = update_data.name
+            update_fields["name"] = update_data.name
         if update_data.description is not None:
-            playbook.description = update_data.description
+            update_fields["description"] = update_data.description
         if update_data.rules is not None:
-            playbook.rules = update_data.rules
+            update_fields["rules"] = update_data.rules
             # Increment version when rules change
-            current_version = float(playbook.version)
-            playbook.version = str(current_version + 0.1)
+            current_version = float(playbook["version"])
+            update_fields["version"] = str(current_version + 0.1)
         if update_data.is_active is not None:
-            playbook.is_active = update_data.is_active
+            update_fields["is_active"] = update_data.is_active
         
-        db.commit()
-        db.refresh(playbook)
+        # Update in MongoDB
+        result = collection.update_one(
+            {"_id": playbook_obj_id},
+            {"$set": update_fields}
+        )
         
-        logger.info(f"Playbook updated: {playbook.id} by user {current_user.id}")
+        if result.modified_count == 0:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to update playbook"
+            )
+        
+        # Get updated playbook
+        updated_playbook = collection.find_one({"_id": playbook_obj_id})
+        
+        logger.info(f"Playbook updated: {playbook_id} by user {current_user.id}")
         
         return LegalPlaybookResponse(
-            id=playbook.id,
-            name=playbook.name,
-            description=playbook.description,
-            version=playbook.version,
-            is_active=playbook.is_active,
-            created_at=playbook.created_at
+            id=str(updated_playbook["_id"]),
+            name=updated_playbook["name"],
+            description=updated_playbook["description"],
+            version=updated_playbook["version"],
+            is_active=updated_playbook["is_active"],
+            created_at=updated_playbook["created_at"]
         )
         
     except HTTPException:
@@ -417,25 +480,41 @@ async def update_playbook(
 
 @router.delete("/playbooks/{playbook_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_playbook(
-    playbook_id: int,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    playbook_id: str,
+    current_user: User = Depends(get_current_user)
 ):
     """Delete playbook"""
     try:
-        playbook = db.query(LegalPlaybook)\
-            .filter(LegalPlaybook.id == playbook_id, LegalPlaybook.user_id == current_user.id)\
-            .first()
+        collection = get_legal_playbooks_collection()
         
-        if not playbook:
+        # Validate ObjectId
+        try:
+            playbook_obj_id = ObjectId(playbook_id)
+        except:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid playbook ID format"
+            )
+        
+        user_id = ObjectId(current_user.id)
+        
+        # Find and delete playbook
+        result = collection.delete_one({
+            "_id": playbook_obj_id,
+            "user_id": user_id
+        })
+        
+        if result.deleted_count == 0:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Playbook not found"
             )
-            
-        db.delete(playbook)
-        db.commit()
+        
+        logger.info(f"Playbook deleted: {playbook_id} by user {current_user.id}")
         return {"message": "Playbook deleted successfully"}
+        
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error deleting playbook {playbook_id}: {str(e)}")
         raise HTTPException(

@@ -1,120 +1,169 @@
-from sqlalchemy import Column, Integer, String, Text, ForeignKey, DateTime, Float, JSON, Enum
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import relationship
-from sqlalchemy.sql import func
-from enum import Enum as PyEnum
-from app.database import Base
+from pydantic import BaseModel, Field, ConfigDict
+from typing import Optional, List, Dict, Any
+from datetime import datetime
+from enum import Enum
+from bson import ObjectId
 
-class DocumentStatus(PyEnum):
+class PyObjectId(ObjectId):
+    """Custom ObjectId type for Pydantic"""
+    @classmethod
+    def __get_validators__(cls):
+        yield cls.validate
+
+    @classmethod
+    def validate(cls, v):
+        if not ObjectId.is_valid(v):
+            raise ValueError("Invalid ObjectId")
+        return ObjectId(v)
+
+    @classmethod
+    def __get_pydantic_json_schema__(cls, field_schema):
+        field_schema.update(type="string")
+
+class DocumentStatus(str, Enum):
     PENDING = "pending"
     PROCESSING = "processing"
     COMPLETE = "complete"
     ERROR = "error"
 
-class RiskLevel(PyEnum):
+class RiskLevel(str, Enum):
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"
     CRITICAL = "critical"
 
-class User(Base):
-    __tablename__ = "users"
-    
-    id = Column(Integer, primary_key=True, index=True)
-    email = Column(String(255), unique=True, index=True, nullable=False)
-    hashed_password = Column(String(255), nullable=False)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
-    is_active = Column(String(10), default="true")
-    
-    # Relationships
-    documents = relationship("Document", back_populates="user")
-    legal_playbooks = relationship("LegalPlaybook", back_populates="user")
+# Base models
+class UserBase(BaseModel):
+    email: str = Field(..., description="User email address")
+    is_active: bool = Field(default=True, description="User account status")
 
-class Document(Base):
-    __tablename__ = "documents"
-    
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    filename = Column(String(255), nullable=False)
-    original_filename = Column(String(255), nullable=False)
-    file_path = Column(String(500), nullable=False)
-    file_size = Column(Integer)
-    mime_type = Column(String(100))
-    status = Column(Enum(DocumentStatus), default=DocumentStatus.PENDING)
-    error_message = Column(Text)
-    processing_started_at = Column(DateTime(timezone=True))
-    processing_completed_at = Column(DateTime(timezone=True))
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+class UserCreate(UserBase):
+    password: str = Field(..., description="User password")
+
+class User(UserBase):
+    id: Optional[PyObjectId] = Field(default_factory=PyObjectId, alias="_id")
+    hashed_password: str = Field(..., description="Hashed user password")
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+    model_config = ConfigDict(
+        populate_by_name=True,
+        arbitrary_types_allowed=True,
+        json_encoders={ObjectId: str}
+    )
+
+class DocumentBase(BaseModel):
+    filename: str = Field(..., description="Document filename")
+    original_filename: str = Field(..., description="Original document filename")
+    file_path: str = Field(..., description="File storage path")
+    file_size: Optional[int] = Field(None, description="File size in bytes")
+    mime_type: Optional[str] = Field(None, description="File MIME type")
+
+class DocumentCreate(DocumentBase):
+    user_id: PyObjectId = Field(..., description="User ID who uploaded the document")
+
+class Document(DocumentBase):
+    id: Optional[PyObjectId] = Field(default_factory=PyObjectId, alias="_id")
+    user_id: PyObjectId = Field(..., description="User ID who uploaded the document")
+    status: DocumentStatus = Field(default=DocumentStatus.PENDING)
+    error_message: Optional[str] = Field(None, description="Error message if processing failed")
+    processing_started_at: Optional[datetime] = Field(None, description="When processing started")
+    processing_completed_at: Optional[datetime] = Field(None, description="When processing completed")
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
     
     # Metadata
-    document_metadata = Column(JSON)
-    extracted_text_length = Column(Integer)
-    total_clauses_found = Column(Integer, default=0)
-    
-    # Relationships
-    user = relationship("User", back_populates="documents")
-    clauses = relationship("Clause", back_populates="document", cascade="all, delete-orphan")
+    document_metadata: Optional[Dict[str, Any]] = Field(default_factory=dict)
+    extracted_text_length: Optional[int] = Field(None, description="Length of extracted text")
+    total_clauses_found: int = Field(default=0, description="Total number of clauses found")
 
-class Clause(Base):
-    __tablename__ = "clauses"
-    
-    id = Column(Integer, primary_key=True, index=True)
-    document_id = Column(Integer, ForeignKey("documents.id"), nullable=False)
-    text = Column(Text, nullable=False)
-    category = Column(String(100), nullable=False)
-    subcategory = Column(String(100))
-    risk_score = Column(Float, default=0.0)
-    risk_level = Column(Enum(RiskLevel), default=RiskLevel.LOW)
-    confidence_score = Column(Float, default=0.0)
+    model_config = ConfigDict(
+        populate_by_name=True,
+        arbitrary_types_allowed=True,
+        json_encoders={ObjectId: str}
+    )
+
+class ClauseBase(BaseModel):
+    text: str = Field(..., description="Clause text content")
+    category: str = Field(..., description="Clause category")
+    subcategory: Optional[str] = Field(None, description="Clause subcategory")
+    risk_score: float = Field(default=0.0, description="Risk score (0.0 to 1.0)")
+    risk_level: RiskLevel = Field(default=RiskLevel.LOW, description="Risk level")
+
+class ClauseCreate(ClauseBase):
+    document_id: PyObjectId = Field(..., description="Document ID this clause belongs to")
+
+class Clause(ClauseBase):
+    id: Optional[PyObjectId] = Field(default_factory=PyObjectId, alias="_id")
+    document_id: PyObjectId = Field(..., description="Document ID this clause belongs to")
+    confidence_score: float = Field(default=0.0, description="Confidence score (0.0 to 1.0)")
     
     # Position information
-    start_position = Column(Integer)
-    end_position = Column(Integer)
-    page_number = Column(Integer)
+    start_position: Optional[int] = Field(None, description="Start position in document")
+    end_position: Optional[int] = Field(None, description="End position in document")
+    page_number: Optional[int] = Field(None, description="Page number")
     
     # Analysis metadata
-    analysis_metadata = Column(JSON)
-    recommendations = Column(Text)
+    analysis_metadata: Optional[Dict[str, Any]] = Field(default_factory=dict)
+    recommendations: Optional[str] = Field(None, description="Analysis recommendations")
     
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    
-    # Relationships
-    document = relationship("Document", back_populates="clauses")
+    created_at: datetime = Field(default_factory=datetime.utcnow)
 
-class LegalPlaybook(Base):
-    __tablename__ = "legal_playbooks"
-    
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    name = Column(String(255), nullable=False)
-    description = Column(Text)
-    rules = Column(JSON, nullable=False)  # Stores the playbook rules as JSON
+    model_config = ConfigDict(
+        populate_by_name=True,
+        arbitrary_types_allowed=True,
+        json_encoders={ObjectId: str}
+    )
+
+class LegalPlaybookBase(BaseModel):
+    name: str = Field(..., description="Playbook name")
+    description: Optional[str] = Field(None, description="Playbook description")
+    rules: Dict[str, Any] = Field(..., description="Playbook rules as JSON")
+
+class LegalPlaybookCreate(LegalPlaybookBase):
+    user_id: PyObjectId = Field(..., description="User ID who created the playbook")
+
+class LegalPlaybook(LegalPlaybookBase):
+    id: Optional[PyObjectId] = Field(default_factory=PyObjectId, alias="_id")
+    user_id: PyObjectId = Field(..., description="User ID who created the playbook")
     
     # Metadata
-    version = Column(String(50), default="1.0")
-    is_active = Column(String(10), default="true")
+    version: str = Field(default="1.0", description="Playbook version")
+    is_active: bool = Field(default=True, description="Playbook status")
     
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
-    
-    # Relationships
-    user = relationship("User", back_populates="legal_playbooks")
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
 
-class AnalysisJob(Base):
-    __tablename__ = "analysis_jobs"
+    model_config = ConfigDict(
+        populate_by_name=True,
+        arbitrary_types_allowed=True,
+        json_encoders={ObjectId: str}
+    )
+
+class AnalysisJob(BaseModel):
+    id: Optional[PyObjectId] = Field(default_factory=PyObjectId, alias="_id")
+    document_id: PyObjectId = Field(..., description="Document ID to analyze")
+    playbook_id: PyObjectId = Field(..., description="Playbook ID to use for analysis")
+    user_id: PyObjectId = Field(..., description="User ID who requested analysis")
     
-    id = Column(Integer, primary_key=True, index=True)
-    document_id = Column(Integer, ForeignKey("documents.id"), nullable=False)
-    job_id = Column(String(255), unique=True, nullable=False)  # Celery job ID
-    status = Column(String(50), default="pending")
-    progress = Column(Integer, default=0)
-    result = Column(JSON)
-    error_message = Column(Text)
+    # Job status
+    status: str = Field(default="pending", description="Job status")
+    progress: float = Field(default=0.0, description="Progress percentage (0.0 to 1.0)")
     
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    # Results
+    results: Optional[Dict[str, Any]] = Field(None, description="Analysis results")
+    error_message: Optional[str] = Field(None, description="Error message if failed")
     
-    # Relationship
-    document = relationship("Document")
+    # Timestamps
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    started_at: Optional[datetime] = Field(None, description="When analysis started")
+    completed_at: Optional[datetime] = Field(None, description="When analysis completed")
+
+    model_config = ConfigDict(
+        populate_by_name=True,
+        arbitrary_types_allowed=True,
+        json_encoders={ObjectId: str}
+    )
+
+class TokenData(BaseModel):
+    email: Optional[str] = None
