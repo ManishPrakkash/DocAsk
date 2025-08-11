@@ -65,11 +65,6 @@ export const useAuthStore = create<AuthState>()(
           });
           
           toast.success('Registration successful!');
-          
-          // Auto-login after successful registration
-          await get().login(email, password);
-          
-          toast.success('Registration successful!');
         } catch (error) {
           const errorMessage = handleAPIError(error);
           toast.error(errorMessage);

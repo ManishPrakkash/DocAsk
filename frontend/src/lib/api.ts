@@ -73,7 +73,7 @@ export const documentAPI = {
     return response.data;
   },
 
-  getDocument: async (id: number): Promise<Document> => {
+  getDocument: async (id: string): Promise<Document> => {
     const response: AxiosResponse<Document> = await api.get(`/api/documents/${id}`);
     return response.data;
   },
@@ -96,17 +96,17 @@ export const documentAPI = {
     return response.data;
   },
 
-  getDocumentStatus: async (id: number): Promise<DocumentStatusUpdate> => {
+  getDocumentStatus: async (id: string): Promise<DocumentStatusUpdate> => {
     const response: AxiosResponse<DocumentStatusUpdate> = await api.get(`/api/documents/${id}/status`);
     return response.data;
   },
 
-  getDocumentAnalysis: async (id: number): Promise<DocumentAnalysis> => {
+  getDocumentAnalysis: async (id: string): Promise<DocumentAnalysis> => {
     const response: AxiosResponse<DocumentAnalysis> = await api.get(`/api/documents/${id}/analysis`);
     return response.data;
   },
 
-  deleteDocument: async (id: number): Promise<void> => {
+  deleteDocument: async (id: string): Promise<void> => {
     await api.delete(`/api/documents/${id}`);
   }
 };
@@ -120,7 +120,7 @@ export const playbookAPI = {
     return response.data;
   },
 
-  getPlaybook: async (id: number): Promise<LegalPlaybook> => {
+  getPlaybook: async (id: string): Promise<LegalPlaybook> => {
     const response: AxiosResponse<LegalPlaybook> = await api.get(`/api/analysis/playbooks/${id}`);
     return response.data;
   },
@@ -130,12 +130,12 @@ export const playbookAPI = {
     return response.data;
   },
 
-  updatePlaybook: async (id: number, data: Partial<LegalPlaybookCreate>): Promise<LegalPlaybookResponse> => {
+  updatePlaybook: async (id: string, data: Partial<LegalPlaybookCreate>): Promise<LegalPlaybookResponse> => {
     const response: AxiosResponse<LegalPlaybookResponse> = await api.put(`/api/analysis/playbooks/${id}`, data);
     return response.data;
   },
 
-  deletePlaybook: async (id: number): Promise<void> => {
+  deletePlaybook: async (id: string): Promise<void> => {
     await api.delete(`/api/analysis/playbooks/${id}`);
   }
 };

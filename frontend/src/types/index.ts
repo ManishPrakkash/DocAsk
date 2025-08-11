@@ -16,7 +16,7 @@ export enum RiskLevel {
 
 // User types
 export interface User {
-  id: number;
+  id: string;
   email: string;
   created_at: string;
 }
@@ -38,7 +38,7 @@ export interface AuthToken {
 
 // Document types
 export interface Document {
-  id: number;
+  id: string;
   filename: string;
   original_filename: string;
   status: DocumentStatus;
@@ -50,7 +50,7 @@ export interface Document {
 }
 
 export interface DocumentStatusUpdate {
-  id: number;
+  id: string;
   status: DocumentStatus;
   progress?: number;
   error_message?: string;
@@ -59,7 +59,7 @@ export interface DocumentStatusUpdate {
 
 export interface UploadResponse {
   message: string;
-  document_id: number;
+  document_id: string;
   status: DocumentStatus;
   job_id?: string;
 }
@@ -98,7 +98,7 @@ export interface DocumentAnalysis {
 
 // Legal Playbook types
 export interface LegalPlaybook {
-  id: number;
+  id: string;
   name: string;
   description?: string;
   rules: Record<string, any>;
@@ -114,7 +114,7 @@ export interface LegalPlaybookCreate {
 }
 
 export interface LegalPlaybookResponse {
-  id: number;
+  id: string;
   name: string;
   description?: string;
   version: string;
@@ -124,8 +124,8 @@ export interface LegalPlaybookResponse {
 
 // Analysis request types
 export interface AnalysisRequest {
-  document_id: number;
-  playbook_id?: number;
+  document_id: string;
+  playbook_id?: string;
   analysis_type: string;
 }
 
@@ -161,8 +161,8 @@ export interface APIError {
 // Component prop types
 export interface DocumentCardProps {
   document: Document;
-  onView: (id: number) => void;
-  onDelete: (id: number) => void;
+  onView: (id: string) => void;
+  onDelete: (id: string) => void;
 }
 
 export interface ClauseHighlightProps {
@@ -195,10 +195,10 @@ export interface DocumentState {
   isLoading: boolean;
   uploadProgress: number;
   fetchDocuments: () => Promise<void>;
-  uploadDocument: (file: File) => Promise<number>;
-  fetchDocumentAnalysis: (id: number) => Promise<void>;
-  pollDocumentStatus: (id: number) => Promise<DocumentStatusUpdate>;
-  deleteDocument: (id: number) => Promise<void>;
+  uploadDocument: (file: File) => Promise<string>;
+  fetchDocumentAnalysis: (id: string) => Promise<void>;
+  pollDocumentStatus: (id: string) => Promise<DocumentStatusUpdate>;
+  deleteDocument: (id: string) => Promise<void>;
 }
 
 export interface PlaybookState {
@@ -207,7 +207,7 @@ export interface PlaybookState {
   isLoading: boolean;
   fetchPlaybooks: () => Promise<void>;
   createPlaybook: (data: LegalPlaybookCreate) => Promise<void>;
-  updatePlaybook: (id: number, data: Partial<LegalPlaybookCreate>) => Promise<void>;
-  deletePlaybook: (id: number) => Promise<void>;
-  fetchPlaybook: (id: number) => Promise<void>;
+  updatePlaybook: (id: string, data: Partial<LegalPlaybookCreate>) => Promise<void>;
+  deletePlaybook: (id: string) => Promise<void>;
+  fetchPlaybook: (id: string) => Promise<void>;
 }

@@ -1,12 +1,11 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from app.database import get_users_collection
-from app.models import User, TokenData
-from app.schemas import UserCreate
+from app.schemas import User, TokenData, UserCreate
 from decouple import config
 import logging
 from bson import ObjectId
@@ -99,8 +98,8 @@ async def create_user(user_data: UserCreate) -> Optional[User]:
             "email": user_data.email,
             "hashed_password": get_password_hash(user_data.password),
             "is_active": True,
-            "created_at": datetime.utcnow(),
-            "updated_at": datetime.utcnow()
+            "created_at": datetime.now(timezone.utc),
+            "updated_at": datetime.now(timezone.utc)
         }
         
         result = await users_collection.insert_one(user_doc)
