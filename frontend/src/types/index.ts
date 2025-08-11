@@ -3,8 +3,8 @@
 export enum DocumentStatus {
   PENDING = 'pending',
   PROCESSING = 'processing',
-  COMPLETE = 'complete',
-  ERROR = 'error'
+  COMPLETED = 'completed',
+  FAILED = 'failed'
 }
 
 export enum RiskLevel {

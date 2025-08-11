@@ -33,6 +33,9 @@ export const useAuthStore = create<AuthState>()(
           });
           
           toast.success('Login successful!');
+          
+          // Navigate to dashboard after successful login
+          window.location.href = '/dashboard';
         } catch (error) {
           const errorMessage = handleAPIError(error);
           toast.error(errorMessage);
@@ -47,9 +50,12 @@ export const useAuthStore = create<AuthState>()(
         try {
           await authAPI.register({ email, password });
           
-          // Don't auto-login, just show success message
+          // Don't auto-login, just show success message and redirect to login
           set({ isLoading: false });
           toast.success('Registration successful! Please login with your credentials.');
+          
+          // Navigate to login page after successful registration
+          window.location.href = '/login';
         } catch (error) {
           const errorMessage = handleAPIError(error);
           toast.error(errorMessage);
@@ -72,6 +78,9 @@ export const useAuthStore = create<AuthState>()(
             isLoading: false,
           });
           toast.success('Logged out successfully');
+          
+          // Navigate to login page after logout
+          window.location.href = '/login';
         }
       },
 
@@ -79,7 +88,7 @@ export const useAuthStore = create<AuthState>()(
         const token = localStorage.getItem('auth_token');
         
         if (!token) {
-          set({ isAuthenticated: false, user: null, token: null });
+          set({ isAuthenticated: false, user: null, token: null, isLoading: false });
           return;
         }
         

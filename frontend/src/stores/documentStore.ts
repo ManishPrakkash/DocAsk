@@ -23,7 +23,7 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
     }
   },
 
-  uploadDocument: async (file: File): Promise<number> => {
+  uploadDocument: async (file: File): Promise<string> => {
     set({ uploadProgress: 0 });
     
     try {
@@ -37,7 +37,7 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
       toast.success('Document uploaded successfully! Processing will begin shortly.');
       set({ uploadProgress: 0 });
       
-      return response.document_id;
+      return response.document_id.toString();
     } catch (error) {
       const errorMessage = handleAPIError(error);
       toast.error(`Upload failed: ${errorMessage}`);
@@ -46,11 +46,11 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
     }
   },
 
-  fetchDocumentAnalysis: async (id: number) => {
+  fetchDocumentAnalysis: async (id: string) => {
     set({ isLoading: true });
     
     try {
-      const analysis = await documentAPI.getDocumentAnalysis(id);
+      const analysis = await documentAPI.getDocumentAnalysis(id.toString());
       set({ currentDocument: analysis, isLoading: false });
     } catch (error) {
       const errorMessage = handleAPIError(error);
@@ -60,7 +60,7 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
     }
   },
 
-  pollDocumentStatus: async (id: number): Promise<DocumentStatus> => {
+  pollDocumentStatus: async (id: string): Promise<DocumentStatusUpdate> => {
     try {
       const status = await documentAPI.getDocumentStatus(id);
       
@@ -87,7 +87,7 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
     }
   },
 
-  deleteDocument: async (id: number) => {
+  deleteDocument: async (id: string) => {
     try {
       await documentAPI.deleteDocument(id);
       

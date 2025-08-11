@@ -1,25 +1,89 @@
 import React, { useEffect, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, FileText, AlertTriangle, TrendingUp, BarChart3 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { 
+  Upload, 
+  FileText, 
+  Clock, 
+  CheckCircle, 
+  AlertTriangle, 
+  BarChart3,
+  Plus,
+  Search,
+  Filter
+} from 'lucide-react';
 import { useDocumentStore } from '@/stores/documentStore';
-import { Clause, RiskLevel } from '@/types';
+import { useAuthStore } from '@/stores/authStore';
+import { Document, DocumentStatus } from '@/types';
+import DocumentUpload from './DocumentUpload';
 import LoadingSpinner from '../ui/LoadingSpinner';
-import RiskBadge from '../ui/RiskBadge';
-import ClauseHighlight from '../analysis/ClauseHighlight';
 
-const AnalysisView: React.FC = () => {
-  const { documentId } = useParams<{ documentId: string }>();
+const Dashboard: React.FC = () => {
   const navigate = useNavigate();
-  const { currentDocument, isLoading, fetchDocumentAnalysis } = useDocumentStore();
-  const [selectedClause, setSelectedClause] = useState<Clause | null>(null);
-  const [filterByRisk, setFilterByRisk] = useState<RiskLevel | 'all'>('all');
-  const [filterByCategory, setFilterByCategory] = useState<string>('all');
+  const { user, logout } = useAuthStore();
+  const { 
+    documents, 
+    isLoading, 
+    fetchDocuments, 
+    uploadProgress 
+  } = useDocumentStore();
+  
+  const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState<DocumentStatus | 'all'>('all');
+  const [showUpload, setShowUpload] = useState(false);
 
   useEffect(() => {
-    if (documentId) {
-      fetchDocumentAnalysis(parseInt(documentId));
+    fetchDocuments();
+  }, [fetchDocuments]);
+
+  const filteredDocuments = documents.filter(doc => {
+    const matchesSearch = doc.original_filename.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesStatus = statusFilter === 'all' || doc.status === statusFilter;
+    return matchesSearch && matchesStatus;
+  });
+
+  const getStatusIcon = (status: DocumentStatus) => {
+    switch (status) {
+      case DocumentStatus.PENDING:
+        return <Clock className="h-4 w-4 text-yellow-500" />;
+      case DocumentStatus.PROCESSING:
+        return <LoadingSpinner size="sm" />;
+      case DocumentStatus.COMPLETED:
+        return <CheckCircle className="h-4 w-4 text-green-500" />;
+      case DocumentStatus.FAILED:
+        return <AlertTriangle className="h-4 w-4 text-red-500" />;
+      default:
+        return <FileText className="h-4 w-4 text-gray-500" />;
     }
-  }, [documentId, fetchDocumentAnalysis]);
+  };
+
+  const getStatusColor = (status: DocumentStatus) => {
+    switch (status) {
+      case DocumentStatus.PENDING:
+        return 'bg-yellow-100 text-yellow-800';
+      case DocumentStatus.PROCESSING:
+        return 'bg-blue-100 text-blue-800';
+      case DocumentStatus.COMPLETED:
+        return 'bg-green-100 text-green-800';
+      case DocumentStatus.FAILED:
+        return 'bg-red-100 text-red-800';
+      default:
+        return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
+  const handleLogout = () => {
+    logout();
+  };
 
   if (isLoading) {
     return (
@@ -29,78 +93,25 @@ const AnalysisView: React.FC = () => {
     );
   }
 
-  if (!currentDocument) {
-    return (
-      <div className="text-center py-12">
-        <FileText className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-        <h3 className="text-lg font-medium text-gray-900 mb-2">Document not found</h3>
-        <p className="text-gray-600 mb-6">
-          The requested document could not be found or is not yet analyzed.
-        </p>
-        <button
-          onClick={() => navigate('/dashboard')}
-          className="btn-primary"
-        >
-          <ArrowLeft className="h-4 w-4 mr-2" />
-          Back to Dashboard
-        </button>
-      </div>
-    );
-  }
-
-  const { document, clauses, analysis_summary } = currentDocument;
-
-  // Filter clauses
-  const filteredClauses = clauses.filter(clause => {
-    const riskMatch = filterByRisk === 'all' || clause.risk_level === filterByRisk;
-    const categoryMatch = filterByCategory === 'all' || clause.category === filterByCategory;
-    return riskMatch && categoryMatch;
-  });
-
-  // Get unique categories
-  const categories = [...new Set(clauses.map(clause => clause.category))];
-
-  const getRiskColor = (riskLevel: RiskLevel): string => {
-    switch (riskLevel) {
-      case RiskLevel.LOW: return 'text-green-600';
-      case RiskLevel.MEDIUM: return 'text-yellow-600';
-      case RiskLevel.HIGH: return 'text-red-600';
-      case RiskLevel.CRITICAL: return 'text-red-800';
-      default: return 'text-gray-600';
-    }
-  };
-
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <div className="flex items-center space-x-4">
-          <button
-            onClick={() => navigate('/dashboard')}
-            className="p-2 text-gray-400 hover:text-gray-600 rounded-md hover:bg-gray-100"
-          >
-            <ArrowLeft className="h-5 w-5" />
-          </button>
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">{document.original_filename}</h1>
-            <p className="text-gray-600">Document Analysis Results</p>
-          </div>
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
+          <p className="text-gray-600">Welcome back, {user?.email}</p>
         </div>
         <div className="flex items-center space-x-4">
-          <div className="text-right">
-            <p className="text-sm text-gray-600">Overall Risk Score</p>
-            <p className={`text-2xl font-bold ${getRiskColor(
-              analysis_summary.overall_risk_score >= 0.7 ? RiskLevel.CRITICAL :
-              analysis_summary.overall_risk_score >= 0.5 ? RiskLevel.HIGH :
-              analysis_summary.overall_risk_score >= 0.3 ? RiskLevel.MEDIUM : RiskLevel.LOW
-            )}`}>
-              {(analysis_summary.overall_risk_score * 100).toFixed(1)}%
-            </p>
-          </div>
+          <button
+            onClick={handleLogout}
+            className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+          >
+            Logout
+          </button>
         </div>
       </div>
 
-      {/* Analysis Summary Cards */}
+      {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
           <div className="flex items-center">
@@ -108,22 +119,8 @@ const AnalysisView: React.FC = () => {
               <FileText className="h-6 w-6 text-blue-600" />
             </div>
             <div className="ml-4">
-              <p className="text-2xl font-semibold text-gray-900">{analysis_summary.total_clauses}</p>
-              <p className="text-sm text-gray-600">Total Clauses</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-          <div className="flex items-center">
-            <div className="p-3 rounded-full bg-red-100">
-              <AlertTriangle className="h-6 w-6 text-red-600" />
-            </div>
-            <div className="ml-4">
-              <p className="text-2xl font-semibold text-gray-900">
-                {(analysis_summary.risk_distribution.high || 0) + (analysis_summary.risk_distribution.critical || 0)}
-              </p>
-              <p className="text-sm text-gray-600">High Risk</p>
+              <p className="text-2xl font-semibold text-gray-900">{documents.length}</p>
+              <p className="text-sm text-gray-600">Total Documents</p>
             </div>
           </div>
         </div>
@@ -131,13 +128,27 @@ const AnalysisView: React.FC = () => {
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
           <div className="flex items-center">
             <div className="p-3 rounded-full bg-green-100">
-              <TrendingUp className="h-6 w-6 text-green-600" />
+              <CheckCircle className="h-6 w-6 text-green-600" />
             </div>
             <div className="ml-4">
               <p className="text-2xl font-semibold text-gray-900">
-                {analysis_summary.risk_distribution.low || 0}
+                {documents.filter(d => d.status === DocumentStatus.COMPLETED).length}
               </p>
-              <p className="text-sm text-gray-600">Low Risk</p>
+              <p className="text-sm text-gray-600">Completed</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+          <div className="flex items-center">
+            <div className="p-3 rounded-full bg-yellow-100">
+              <Clock className="h-6 w-6 text-yellow-600" />
+            </div>
+            <div className="ml-4">
+              <p className="text-2xl font-semibold text-gray-900">
+                {documents.filter(d => d.status === DocumentStatus.PROCESSING || d.status === DocumentStatus.PENDING).length}
+              </p>
+              <p className="text-sm text-gray-600">In Progress</p>
             </div>
           </div>
         </div>
@@ -148,145 +159,133 @@ const AnalysisView: React.FC = () => {
               <BarChart3 className="h-6 w-6 text-purple-600" />
             </div>
             <div className="ml-4">
-              <p className="text-2xl font-semibold text-gray-900">{categories.length}</p>
-              <p className="text-sm text-gray-600">Categories</p>
+              <p className="text-2xl font-semibold text-gray-900">
+                {documents.filter(d => d.status === DocumentStatus.FAILED).length}
+              </p>
+              <p className="text-sm text-gray-600">Failed</p>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Risk Distribution */}
+      {/* Upload Section */}
       <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Risk Distribution</h3>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {Object.entries(analysis_summary.risk_distribution).map(([risk, count]) => (
-            <div key={risk} className="text-center">
-              <div className={`text-2xl font-bold ${getRiskColor(risk as RiskLevel)}`}>
-                {count}
-              </div>
-              <div className="text-sm text-gray-600 capitalize">{risk} Risk</div>
-            </div>
-          ))}
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-lg font-semibold text-gray-900">Upload Documents</h2>
+          <button
+            onClick={() => setShowUpload(!showUpload)}
+            className="flex items-center px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
+          >
+            <Plus className="h-4 w-4 mr-2" />
+            {showUpload ? 'Hide Upload' : 'Upload Document'}
+          </button>
         </div>
+        
+        {showUpload && <DocumentUpload />}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Clauses List */}
-        <div className="lg:col-span-2 space-y-4">
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200">
-            <div className="p-6 border-b border-gray-200">
-              <div className="flex items-center justify-between">
-                <h3 className="text-lg font-semibold text-gray-900">Identified Clauses</h3>
-                <div className="flex space-x-4">
-                  {/* Risk Filter */}
-                  <select
-                    value={filterByRisk}
-                    onChange={(e) => setFilterByRisk(e.target.value as RiskLevel | 'all')}
-                    className="text-sm border border-gray-300 rounded-md px-3 py-1"
-                  >
-                    <option value="all">All Risk Levels</option>
-                    <option value="critical">Critical</option>
-                    <option value="high">High</option>
-                    <option value="medium">Medium</option>
-                    <option value="low">Low</option>
-                  </select>
-
-                  {/* Category Filter */}
-                  <select
-                    value={filterByCategory}
-                    onChange={(e) => setFilterByCategory(e.target.value)}
-                    className="text-sm border border-gray-300 rounded-md px-3 py-1"
-                  >
-                    <option value="all">All Categories</option>
-                    {categories.map(category => (
-                      <option key={category} value={category}>
-                        {category.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-            </div>
-
-            <div className="divide-y divide-gray-200 max-h-96 overflow-y-auto">
-              {filteredClauses.map((clause) => (
-                <ClauseHighlight
-                  key={clause.id}
-                  clause={clause}
-                  isSelected={selectedClause?.id === clause.id}
-                  onClick={() => setSelectedClause(clause)}
+      {/* Documents List */}
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+        <div className="p-6 border-b border-gray-200">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold text-gray-900">Your Documents</h2>
+            <div className="flex items-center space-x-4">
+              {/* Search */}
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="Search documents..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                 />
-              ))}
+              </div>
+
+              {/* Status Filter */}
+              <div className="relative">
+                <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                <select
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value as DocumentStatus | 'all')}
+                  className="pl-10 pr-8 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 appearance-none bg-white"
+                >
+                  <option value="all">All Status</option>
+                  <option value="pending">Pending</option>
+                  <option value="processing">Processing</option>
+                  <option value="completed">Completed</option>
+                  <option value="failed">Failed</option>
+                </select>
+              </div>
             </div>
           </div>
         </div>
 
-        {/* Clause Details Sidebar */}
-        <div className="space-y-4">
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Clause Details</h3>
-            
-            {selectedClause ? (
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Risk Level</label>
-                  <RiskBadge riskLevel={selectedClause.risk_level} riskScore={selectedClause.risk_score} />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
-                  <p className="text-sm text-gray-900 capitalize">
-                    {selectedClause.category.replace('_', ' ')}
-                  </p>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Confidence Score</label>
-                  <p className="text-sm text-gray-900">
-                    {(selectedClause.confidence_score * 100).toFixed(1)}%
-                  </p>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Clause Text</label>
-                  <p className="text-sm text-gray-900 bg-gray-50 p-3 rounded-md">
-                    {selectedClause.text}
-                  </p>
-                </div>
-
-                {selectedClause.recommendations && (
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Recommendations</label>
-                    <div className="text-sm text-gray-900 bg-yellow-50 p-3 rounded-md">
-                      {selectedClause.recommendations.split(' | ').map((rec, index) => (
-                        <div key={index} className="mb-2 last:mb-0">
-                          • {rec}
-                        </div>
-                      ))}
+        <div className="divide-y divide-gray-200">
+          {filteredDocuments.length === 0 ? (
+            <div className="p-6 text-center">
+              <FileText className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+              <h3 className="text-lg font-medium text-gray-900 mb-2">No documents found</h3>
+              <p className="text-gray-600 mb-4">
+                {documents.length === 0 
+                  ? "You haven't uploaded any documents yet. Start by uploading your first document."
+                  : "No documents match your search criteria."
+                }
+              </p>
+              {documents.length === 0 && (
+                <button
+                  onClick={() => setShowUpload(true)}
+                  className="inline-flex items-center px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
+                >
+                  <Upload className="h-4 w-4 mr-2" />
+                  Upload Document
+                </button>
+              )}
+            </div>
+          ) : (
+            filteredDocuments.map((document) => (
+              <div
+                key={document.id}
+                className="p-6 hover:bg-gray-50 transition-colors duration-200 cursor-pointer"
+                onClick={() => {
+                  if (document.status === DocumentStatus.COMPLETED) {
+                    navigate(`/analysis/${document.id}`);
+                  }
+                }}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-4">
+                    <div className="flex-shrink-0">
+                      {getStatusIcon(document.status)}
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-medium text-gray-900">
+                        {document.original_filename}
+                      </h3>
+                      <p className="text-sm text-gray-500">
+                        Uploaded {formatDate(document.created_at)}
+                      </p>
                     </div>
                   </div>
-                )}
-              </div>
-            ) : (
-              <p className="text-gray-600 text-sm">
-                Select a clause from the list to view detailed analysis and recommendations.
-              </p>
-            )}
-          </div>
-
-          {/* Overall Recommendations */}
-          {analysis_summary.recommendations.length > 0 && (
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Key Recommendations</h3>
-              <div className="space-y-3">
-                {analysis_summary.recommendations.slice(0, 5).map((rec, index) => (
-                  <div key={index} className="flex items-start">
-                    <div className="flex-shrink-0 w-1.5 h-1.5 bg-primary-600 rounded-full mt-2 mr-3" />
-                    <p className="text-sm text-gray-700">{rec}</p>
+                  <div className="flex items-center space-x-4">
+                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(document.status)}`}>
+                      {document.status}
+                    </span>
+                    {document.status === DocumentStatus.COMPLETED && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          navigate(`/analysis/${document.id}`);
+                        }}
+                        className="text-primary-600 hover:text-primary-500 text-sm font-medium"
+                      >
+                        View Analysis
+                      </button>
+                    )}
                   </div>
-                ))}
+                </div>
               </div>
-            </div>
+            ))
           )}
         </div>
       </div>
@@ -294,4 +293,4 @@ const AnalysisView: React.FC = () => {
   );
 };
 
-export default AnalysisView;
+export default Dashboard;

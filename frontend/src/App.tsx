@@ -9,6 +9,7 @@ import AnalysisView from './components/analysis/AnalysisView';
 import Layout from './components/layout/Layout';
 import LoadingSpinner from './components/ui/LoadingSpinner';
 import ProtectedRoute from './components/auth/ProtectedRoute';
+import AuthDebug from './components/debug/AuthDebug';
 
 const App: React.FC = () => {
   const { isAuthenticated, isLoading, checkAuth } = useAuthStore();
@@ -28,6 +29,9 @@ const App: React.FC = () => {
   return (
     <Router>
       <div className="min-h-screen bg-gray-50">
+        {/* Debug component - remove in production */}
+        <AuthDebug />
+        
         <Toaster
           position="top-right"
           toastOptions={{
