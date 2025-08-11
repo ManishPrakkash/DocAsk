@@ -52,6 +52,8 @@ async def get_user_by_email(email: str) -> Optional[User]:
         users_collection = get_users_collection()
         user_data = await users_collection.find_one({"email": email})
         if user_data:
+            # Convert ObjectId to string for Pydantic
+            user_data["id"] = str(user_data["_id"])
             return User(**user_data)
         return None
     except Exception as e:
@@ -64,6 +66,8 @@ async def get_user_by_id(user_id: str) -> Optional[User]:
         users_collection = get_users_collection()
         user_data = await users_collection.find_one({"_id": ObjectId(user_id)})
         if user_data:
+            # Convert ObjectId to string for Pydantic
+            user_data["id"] = str(user_data["_id"])
             return User(**user_data)
         return None
     except Exception as e:
@@ -104,6 +108,7 @@ async def create_user(user_data: UserCreate) -> Optional[User]:
         
         result = await users_collection.insert_one(user_doc)
         user_doc["_id"] = result.inserted_id
+        user_doc["id"] = str(result.inserted_id)
         
         return User(**user_doc)
     except Exception as e:

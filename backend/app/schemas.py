@@ -11,7 +11,7 @@ class PyObjectId(ObjectId):
         yield cls.validate
 
     @classmethod
-    def validate(cls, v):
+    def validate(cls, v, handler):
         if not ObjectId.is_valid(v):
             raise ValueError("Invalid ObjectId")
         return ObjectId(v)
@@ -55,6 +55,7 @@ class UserLogin(BaseModel):
 
 class User(UserBase):
     id: Optional[PyObjectId] = Field(default_factory=PyObjectId, alias="_id")
+    hashed_password: str
     is_active: bool = Field(default=True)
     created_at: datetime = Field(default_factory=datetime.utcnow)
     

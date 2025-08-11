@@ -22,7 +22,7 @@ app = FastAPI(
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000", "http://frontend-app:3000"],
+    allow_origins=["*"],  # Allow all origins for development
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
@@ -69,6 +69,24 @@ async def get_user_profile(current_user: User = Depends(get_current_user)):
         "email": current_user.email,
         "is_active": current_user.is_active,
         "created_at": current_user.created_at
+    }
+
+@app.get("/api/user/profile")
+async def get_user_profile_alt(current_user: User = Depends(get_current_user)):
+    """Alternative user profile endpoint"""
+    return {
+        "id": str(current_user.id),
+        "email": current_user.email,
+        "is_active": current_user.is_active,
+        "created_at": current_user.created_at
+    }
+
+@app.get("/api/user/profile/public")
+async def get_public_profile():
+    """Public profile endpoint for testing"""
+    return {
+        "message": "Profile endpoint is working",
+        "status": "success"
     }
 
 if __name__ == "__main__":

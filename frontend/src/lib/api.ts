@@ -8,7 +8,7 @@ import {
 
 // Create axios instance with base configuration
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:8000',
+  baseURL: import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000',
   timeout: 30000, // 30 seconds timeout
   headers: {
     'Content-Type': 'application/json',
@@ -169,7 +169,18 @@ export const healthAPI = {
 // Utility function to handle API errors
 export const handleAPIError = (error: any): string => {
   if (error.response?.data?.detail) {
-    return error.response.data.detail;
+    // Handle both string and object detail responses
+    const detail = error.response.data.detail;
+    if (typeof detail === 'string') {
+      return detail;
+    } else if (Array.isArray(detail)) {
+      // Handle validation errors array
+      return detail.map((err: any) => err.msg || err.message).join(', ');
+    } else if (typeof detail === 'object') {
+      // Handle object error details
+      return detail.message || detail.msg || JSON.stringify(detail);
+    }
+    return String(detail);
   }
   if (error.message) {
     return error.message;

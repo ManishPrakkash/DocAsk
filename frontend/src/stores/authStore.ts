@@ -47,24 +47,9 @@ export const useAuthStore = create<AuthState>()(
         try {
           await authAPI.register({ email, password });
           
-          // Auto-login after successful registration
-          const tokenResponse = await authAPI.login({ email, password });
-          const { access_token } = tokenResponse;
-          
-          // Store token in localStorage and state
-          localStorage.setItem('auth_token', access_token);
-          
-          // Get user profile
-          const user = await authAPI.getProfile();
-          
-          set({
-            user,
-            token: access_token,
-            isAuthenticated: true,
-            isLoading: false,
-          });
-          
-          toast.success('Registration successful!');
+          // Don't auto-login, just show success message
+          set({ isLoading: false });
+          toast.success('Registration successful! Please login with your credentials.');
         } catch (error) {
           const errorMessage = handleAPIError(error);
           toast.error(errorMessage);

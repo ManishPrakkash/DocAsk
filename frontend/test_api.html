@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API Test</title>
+</head>
+<body>
+    <h1>Frontend-Backend API Test</h1>
+    <div id="results"></div>
+
+    <script>
+        const resultsDiv = document.getElementById('results');
+        
+        async function testAPI() {
+            const baseURL = 'http://127.0.0.1:8000';
+            
+            try {
+                // Test health endpoint
+                const healthResponse = await fetch(`${baseURL}/api/health`);
+                const healthData = await healthResponse.json();
+                resultsDiv.innerHTML += `<p>✅ Health: ${healthResponse.status} - ${JSON.stringify(healthData)}</p>`;
+                
+                // Test registration
+                const registerResponse = await fetch(`${baseURL}/api/auth/register`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        email: 'test6@example.com',
+                        password: 'TestPass123'
+                    })
+                });
+                const registerData = await registerResponse.json();
+                resultsDiv.innerHTML += `<p>✅ Registration: ${registerResponse.status} - ${JSON.stringify(registerData)}</p>`;
+                
+                // Test login
+                const loginResponse = await fetch(`${baseURL}/api/auth/login`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        email: 'test6@example.com',
+                        password: 'TestPass123'
+                    })
+                });
+                const loginData = await loginResponse.json();
+                resultsDiv.innerHTML += `<p>✅ Login: ${loginResponse.status} - ${JSON.stringify(loginData)}</p>`;
+                
+                if (loginData.access_token) {
+                    // Test profile with token
+                    const profileResponse = await fetch(`${baseURL}/api/user/profile`, {
+                        headers: {
+                            'Authorization': `Bearer ${loginData.access_token}`
+                        }
+                    });
+                    const profileData = await profileResponse.json();
+                    resultsDiv.innerHTML += `<p>✅ Profile: ${profileResponse.status} - ${JSON.stringify(profileData)}</p>`;
+                }
+                
+            } catch (error) {
+                resultsDiv.innerHTML += `<p>❌ Error: ${error.message}</p>`;
+            }
+        }
+        
+        testAPI();
+    </script>
+</body>
+</html>
